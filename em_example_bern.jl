@@ -14,7 +14,6 @@ using Optim;
 using ProgressBars;
 #using DoubleFloats;
 
-
 function fit_glmhmm_with_em(
     X, 
     y, 
@@ -33,13 +32,10 @@ function fit_glmhmm_with_em(
     n_cols_bern = size(X, 2)
 
     if isnothing(model_init)
-        b_init = init_bern(rng_state, X, y, n_states)
-        model_init = (
-            W = b_init
-        )
+        model_init = init_bern(rng_state, X, y, n_states)
     end
 
-    W = model_init.W;
+    W = model_init
 
 
     dir_prior = generate_dir_prior(n_states, dir_prior_diag, dir_prior_off_diag)
@@ -52,7 +48,7 @@ function fit_glmhmm_with_em(
 
     log_marg_lik = fill(NaN, max_iter+1)
 
-    log_lik_obs = zeros(n_trials_total, n_states)
+    loglik_obs = zeros(n_trials_total, n_states)
     
     compute_bern_loglikelihoods!(loglik_obs, X, y, W, n_trials_total, n_class, n_states)
 
@@ -60,30 +56,30 @@ function fit_glmhmm_with_em(
     log_f_msg = log_forward(zeros(n_trials_total, n_states), zeros(n_trials_total))
     log_b_msg = log_backward(zeros(n_trials_total, n_states))
 
-    log_forward_message!(log_f_msg, log_lik_obs, log.(prob_obj.pi0), prob_obj.A)
-    log_backward_message!(log_b_msg, log_lik_obs, log.(prob_obj.A), log_f_msg.log_c)
+    log_forward_message!(log_f_msg, loglik_obs, log.(prob_obj.pi0), prob_obj.A)
+    log_backward_message!(log_b_msg, loglik_obs, log.(prob_obj.A), log_f_msg.log_c)
 
-    e_quants = expectations(log_f_msg, log_b_msg, log_lik_obs, prob_obj.A)
+    e_quants = expectations(log_f_msg, log_b_msg, loglik_obs, prob_obj.A)
     prob_param_m_step!(prob_obj, e_quants)
 
     W = bern_m_step_with_derivs(X, y, e_quants.gamma, n_cols_bern, n_states)
 
 
     lml_prev = -Inf
-    W_bern_old = copy(W_bern)
+    W_old = copy(W)
     converged = false
     iteration_counter = 1
 
     for iter in ProgressBar(1:max_iter)
         compute_bern_loglikelihoods!(loglik_obs, X, y, W, n_trials_total, n_class, n_states)
 
-        log_forward_message!(log_f_msg, log_lik_obs, log.(prob_obj.pi0), log.(prob_obj.A))
-        log_backward_message!(log_b_msg, log_lik_obs, log.(prob_obj.A), log_f_msg.log_c)
+        log_forward_message!(log_f_msg, loglik_obs, log.(prob_obj.pi0), log.(prob_obj.A))
+        log_backward_message!(log_b_msg, loglik_obs, log.(prob_obj.A), log_f_msg.log_c)
 
-        e_quants = expectations(log_f_msg, log_b_msg, log_lik_obs, log.(prob_obj.A))
+        e_quants = expectations(log_f_msg, log_b_msg, loglik_obs, log.(prob_obj.A))
         prob_param_m_step!(prob_obj, e_quants)
 
-        W_bern = bern_m_step_with_derivs(X, y, e_quants.gamma, n_cols_bern, n_states)
+        W = bern_m_step_with_derivs(X, y, e_quants.gamma, n_cols_bern, n_states)
 
         lml = sum(log_f_msg.log_c)
         log_marg_lik[iter] = lml
